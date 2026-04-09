@@ -1,0 +1,27 @@
+{
+  "name": "skilljournal",
+  "version": "1.0.0",
+  "description": "MCP server for discovering and resolving skills from Codex and Claude Code directories",
+  "main": "server.mjs",
+  "bin": {
+    "skilljournal": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "mcp",
+    "skills",
+    "claude"
+  ],
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.4"
+  }
+}
