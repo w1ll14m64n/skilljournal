@@ -1,6 +1,13 @@
 import { tokenize, unique } from "./utils.js";
 
-export function matchSkills(task, skills) {
+const DEFAULT_OPTIONS = {
+  maxResults: 3,
+  minScore: 20,
+};
+
+export function matchSkills(task, skills, options = {}) {
+  const maxResults = Number.isInteger(options.maxResults) ? options.maxResults : DEFAULT_OPTIONS.maxResults;
+  const minScore = Number.isInteger(options.minScore) ? options.minScore : DEFAULT_OPTIONS.minScore;
   const taskText = String(task || "").trim();
   const taskLower = taskText.toLowerCase();
   const taskTokens = unique(tokenize(taskText));
@@ -8,7 +15,7 @@ export function matchSkills(task, skills) {
   const matches = [];
   for (const skill of skills) {
     const score = scoreSkill(taskLower, taskTokens, skill);
-    if (score <= 0) {
+    if (score < minScore) {
       continue;
     }
 
@@ -18,7 +25,7 @@ export function matchSkills(task, skills) {
     });
   }
 
-  return matches.sort(compareMatches);
+  return matches.sort(compareMatches).slice(0, maxResults);
 }
 
 function scoreSkill(taskLower, taskTokens, skill) {
@@ -27,12 +34,12 @@ function scoreSkill(taskLower, taskTokens, skill) {
   const skillSlugPhrase = skillSlug.replaceAll("-", " ");
   const skillSlugTokens = tokenize(skillSlug);
   const skillName = String(skill.name || "").toLowerCase();
-  const terms = unique([
-    skillSlug,
-    ...skillSlugTokens,
-    ...tokenize(skillName),
-    ...(Array.isArray(skill.triggers) ? skill.triggers.flatMap((item) => tokenize(item)) : [])
-  ]);
+  const triggerTokens = Array.isArray(skill.triggers) ? skill.triggers.flatMap((item) => tokenize(item)) : [];
+  const termSources = new Map();
+
+  addTerms(termSources, skillSlugTokens, "slug");
+  addTerms(termSources, tokenize(skillName), "name");
+  addTerms(termSources, triggerTokens, "trigger");
 
   if (taskLower.includes(skillSlug)) {
     score += 100;
@@ -57,14 +64,19 @@ function scoreSkill(taskLower, taskTokens, skill) {
     }
   }
 
-  for (const term of terms) {
-    if (term.length < 2) {
-      continue;
+  const overlap = [];
+  for (const [term, sources] of termSources.entries()) {
+    if (isMeaningfulToken(term) && taskTokens.includes(term)) {
+      overlap.push({ term, sources });
     }
+  }
 
-    if (taskTokens.includes(term)) {
-      score += 10;
-    }
+  for (const { term, sources } of overlap) {
+    score += scoreTermOverlap(term, sources);
+  }
+
+  if (overlap.length >= 2) {
+    score += 10;
   }
 
   return score;
@@ -76,4 +88,58 @@ function compareMatches(left, right) {
     left.slug.localeCompare(right.slug) ||
     left.scope.localeCompare(right.scope)
   );
+}
+
+const STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "do",
+  "for",
+  "fix",
+  "i",
+  "in",
+  "is",
+  "it",
+  "need",
+  "of",
+  "on",
+  "run",
+  "the",
+  "to"
+]);
+
+function isMeaningfulToken(token) {
+  return token.length >= 3 && !STOPWORDS.has(token);
+}
+
+function addTerms(termSources, terms, source) {
+  for (const term of unique(terms)) {
+    if (!termSources.has(term)) {
+      termSources.set(term, new Set());
+    }
+    termSources.get(term).add(source);
+  }
+}
+
+function scoreTermOverlap(term, sources) {
+  const lengthBonus = term.length >= 8 ? 4 : 0;
+
+  if (sources.has("slug") && sources.has("name")) {
+    return 20 + lengthBonus;
+  }
+
+  if (sources.has("name")) {
+    return 18 + lengthBonus;
+  }
+
+  if (sources.has("slug")) {
+    return 14 + lengthBonus;
+  }
+
+  if (sources.has("trigger")) {
+    return 8 + lengthBonus;
+  }
+
+  return 0;
 }

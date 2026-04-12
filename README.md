@@ -113,10 +113,17 @@ codex mcp add skilljournal -- node /absolute/path/to/skilljournal/server.mjs
 ```
 </details>
 
+## Production checklist
+
+- Run `npm run verify` before publishing.
+- Publish only from a clean tree with CI green on Node 20 and 22.
+- Pass an absolute `projectRoot` to every MCP tool call.
+- Use simple frontmatter shapes for metadata: `name`, `triggers`, and basic multiline text.
+
 ## Tools
 
 - **`list_skills`** — finds skills across `~/.codex/skills/`, `<project>/.codex/skills/`, `~/.claude/commands/`, and `<project>/.claude/commands/`
-- **`resolve_triggered_skills`** — matches a task to relevant skills using token scoring, returns the skill content + any journal entries as prompt-ready text
+- **`resolve_triggered_skills`** — matches a task to relevant skills using token scoring, supports optional `scope`, `maxSkills`, and `minScore` controls, and returns the skill content + any journal entries as prompt-ready text
 - **`record_skill_learning`** — writes a learning entry to `.journal/<slug>.md` so it gets picked up next time
 
 ## Recommended agent pattern
@@ -163,7 +170,8 @@ Scans four places:
 
 Project skills override user skills when slugs collide.
 
-Skills are markdown files. Optional YAML frontmatter for name and trigger phrases:
+Skills are markdown files. Standard YAML frontmatter is supported for metadata such as `name`, `triggers`, and nested config.
+Supported forms include inline arrays, block-list arrays, CRLF files, multiline block scalars, and nested mappings:
 
 ```markdown
 ---
@@ -174,6 +182,8 @@ triggers: ["deploy", "release", "ship it"]
 1. Run tests first
 2. ...
 ```
+
+Frontmatter is parsed as YAML and must have a top-level mapping object.
 
 ## Journals
 
@@ -191,7 +201,17 @@ When `resolve_triggered_skills` fires for a deploy task, this entry rides along.
 
 ## How matching works
 
-Token-based scoring. Exact slug match is the strongest signal, then trigger phrases, then vocabulary overlap. Only skills above zero get returned — no context window pollution.
+Token-based scoring. Exact slug match is the strongest signal, then trigger phrases, then meaningful vocabulary overlap. The matcher is designed to reduce context-window pollution while still surfacing likely skills.
+
+The matcher is heuristic, not semantic. Keep trigger phrases concrete and task-shaped, validate matching changes against the test corpus before shipping, and use `scope`, `maxSkills`, and `minScore` to tune production behavior.
+
+## Troubleshooting
+
+- `projectRoot must be an absolute path`: pass a fully-qualified project path, not `.` or a relative path.
+- No skills found: confirm the skill file exists in one of the scanned directories and is named `SKILL.md` or `<slug>.md`.
+- Too many or too few matches: tune `resolve_triggered_skills` with `scope`, `maxSkills`, and `minScore`.
+- Journal write failed: check that the project directory is writable and that the slug uses supported filename characters.
+- MCP startup via `npx` fails: install globally first or fix npm cache ownership, then retry.
 
 ## Structure
 

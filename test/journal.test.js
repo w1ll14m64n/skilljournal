@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { readJournal, appendSkillLearning, renderJournalEntry } from "../src/journal.js";
+import { journalPathForSkill, readJournal, appendSkillLearning, renderJournalEntry } from "../src/journal.js";
 
 let tmpDir;
 
@@ -20,6 +20,18 @@ describe("readJournal", () => {
     expect(result.journalExists).toBe(false);
     expect(result.content).toBe("");
     expect(result.journalPath).toBe(path.join(tmpDir, ".journal", "nonexistent.md"));
+  });
+
+  it("rejects a relative project root", async () => {
+    await expect(readJournal("relative/path", "nonexistent")).rejects.toThrow(
+      "projectRoot must be an absolute path"
+    );
+  });
+});
+
+describe("journalPathForSkill", () => {
+  it("rejects invalid slugs", () => {
+    expect(() => journalPathForSkill(tmpDir, "../escape")).toThrow("unsupported characters");
   });
 });
 
@@ -99,6 +111,16 @@ describe("renderJournalEntry", () => {
     });
     expect(result).toContain("## 2026-04-09 - Test");
   });
+
+  it("rejects invalid dates", () => {
+    expect(() =>
+      renderJournalEntry({
+        title: "Test",
+        learning: "Test",
+        date: "not-a-date",
+      })
+    ).toThrow("Invalid date: not-a-date");
+  });
 });
 
 describe("readJournal after append", () => {
@@ -112,5 +134,26 @@ describe("readJournal after append", () => {
     const result = await readJournal(tmpDir, "auth");
     expect(result.journalExists).toBe(true);
     expect(result.content).toContain("Token expiry");
+  });
+});
+
+describe("appendSkillLearning concurrency", () => {
+  it("preserves all entries during concurrent appends", async () => {
+    await Promise.all([
+      appendSkillLearning(tmpDir, "deploy", {
+        title: "First",
+        learning: "First learning",
+        date: "2026-04-01",
+      }),
+      appendSkillLearning(tmpDir, "deploy", {
+        title: "Second",
+        learning: "Second learning",
+        date: "2026-04-02",
+      }),
+    ]);
+
+    const content = await readFile(path.join(tmpDir, ".journal", "deploy.md"), "utf8");
+    expect(content).toContain("## 2026-04-01 - First");
+    expect(content).toContain("## 2026-04-02 - Second");
   });
 });

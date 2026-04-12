@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseFrontmatter, tokenize, unique, resolveHome, readTextIfExists } from "../src/utils.js";
+import {
+  assertUniqueSkillSlugs,
+  parseFrontmatter,
+  tokenize,
+  unique,
+  resolveHome,
+  readTextIfExists,
+  resolveDateString
+} from "../src/utils.js";
 import os from "node:os";
 import path from "node:path";
 
@@ -69,6 +77,40 @@ describe("parseFrontmatter", () => {
     const { metadata } = parseFrontmatter(doc);
     expect(metadata.triggers).toEqual(["one", "two"]);
   });
+
+  it("parses CRLF frontmatter", () => {
+    const doc = "---\r\nname: Deploy\r\ntriggers: [\"deploy\"]\r\n---\r\n# Content";
+    const { metadata, body } = parseFrontmatter(doc);
+    expect(metadata.name).toBe("Deploy");
+    expect(metadata.triggers).toEqual(["deploy"]);
+    expect(body).toBe("# Content");
+  });
+
+  it("parses block-list arrays", () => {
+    const doc = `---\nname: "Deploy"\ntriggers:\n  - deploy\n  - release\n---\n# Content`;
+    const { metadata } = parseFrontmatter(doc);
+    expect(metadata.triggers).toEqual(["deploy", "release"]);
+  });
+
+  it("parses multiline block scalars", () => {
+    const doc = `---\ndescription: |\n  line one\n  line two\n---\n# Content`;
+    const { metadata } = parseFrontmatter(doc);
+    expect(metadata.description).toBe("line one\nline two");
+  });
+
+  it("parses nested YAML metadata", () => {
+    const doc = `---\nmeta:\n  owner: ops\n  tags:\n    - deploy\n    - release\n---\n# Content`;
+    const { metadata } = parseFrontmatter(doc);
+    expect(metadata.meta).toEqual({
+      owner: "ops",
+      tags: ["deploy", "release"],
+    });
+  });
+
+  it("throws on invalid YAML frontmatter", () => {
+    const doc = `---\nname: [unterminated\n---\n# Content`;
+    expect(() => parseFrontmatter(doc)).toThrow("Invalid frontmatter");
+  });
 });
 
 describe("resolveHome", () => {
@@ -94,5 +136,27 @@ describe("readTextIfExists", () => {
   it("returns null for missing file", async () => {
     const result = await readTextIfExists("/tmp/skilljournal-test-nonexistent-file");
     expect(result).toBe(null);
+  });
+});
+
+describe("assertUniqueSkillSlugs", () => {
+  it("accepts unique valid slugs", () => {
+    expect(() => assertUniqueSkillSlugs(["deploy-prod", "lint"])).not.toThrow();
+  });
+
+  it("rejects duplicates", () => {
+    expect(() => assertUniqueSkillSlugs(["deploy-prod", "deploy-prod"])).toThrow(
+      "Duplicate skill slug: deploy-prod"
+    );
+  });
+});
+
+describe("resolveDateString", () => {
+  it("normalizes valid dates", () => {
+    expect(resolveDateString("2026-04-09T14:30:00Z")).toBe("2026-04-09");
+  });
+
+  it("rejects invalid dates", () => {
+    expect(() => resolveDateString("not-a-date")).toThrow("Invalid date: not-a-date");
   });
 });

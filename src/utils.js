@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { mkdir, readFile } from "node:fs/promises";
+import { parseDocument } from "yaml";
 
 export async function ensureDir(dirPath) {
   await mkdir(dirPath, { recursive: true });
@@ -33,100 +34,83 @@ export async function readTextIfExists(filePath) {
   }
 }
 
+export function assertAbsoluteProjectRoot(projectRoot) {
+  if (!path.isAbsolute(projectRoot)) {
+    throw new Error("projectRoot must be an absolute path");
+  }
+}
+
+export function assertValidSkillSlug(slug) {
+  if (typeof slug !== "string" || slug.trim().length === 0) {
+    throw new Error("skill slug must be a non-empty string");
+  }
+
+  if (!/^[A-Za-z0-9._ -]+$/.test(slug)) {
+    throw new Error(`skill slug contains unsupported characters: ${slug}`);
+  }
+}
+
+export function assertUniqueSkillSlugs(slugs) {
+  const seen = new Set();
+
+  for (const slug of slugs) {
+    assertValidSkillSlug(slug);
+    if (seen.has(slug)) {
+      throw new Error(`Duplicate skill slug: ${slug}`);
+    }
+    seen.add(slug);
+  }
+}
+
+export function resolveDateString(date) {
+  if (!date) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  const trimmed = String(date).trim();
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid date: ${date}`);
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
 export function parseFrontmatter(documentText) {
-  const match = documentText.match(/^---\n([\s\S]*?)\n---\n?/);
+  const normalized = String(documentText).replace(/\r\n/g, "\n");
+  const match = normalized.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!match) {
     return { metadata: {}, body: documentText };
   }
 
-  const metadata = {};
-  for (const line of match[1].split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-
-    const index = trimmed.indexOf(":");
-    if (index === -1) {
-      continue;
-    }
-
-    const key = trimmed.slice(0, index).trim();
-    const value = trimmed.slice(index + 1).trim();
-    metadata[key] = parseFrontmatterValue(value);
-  }
+  const metadata = parseFrontmatterMetadata(match[1]);
 
   return {
     metadata,
-    body: documentText.slice(match[0].length)
+    body: normalized.slice(match[0].length)
   };
 }
 
-function parseFrontmatterValue(rawValue) {
-  if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
-    const inner = rawValue.slice(1, -1).trim();
-    if (!inner) {
-      return [];
-    }
+function parseFrontmatterMetadata(frontmatterText) {
+  const document = parseDocument(frontmatterText, {
+    uniqueKeys: false,
+    prettyErrors: true,
+  });
 
-    return splitTopLevel(inner).map((part) => stripQuotes(part.trim()));
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid frontmatter: ${document.errors[0].message}`);
   }
 
-  if (rawValue === "true" || rawValue === "false") {
-    return rawValue === "true";
+  const parsed = document.toJS();
+  if (parsed === null || parsed === undefined) {
+    return {};
   }
 
-  if (/^-?\d+$/.test(rawValue)) {
-    return Number(rawValue);
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Invalid frontmatter: top-level frontmatter must be a mapping");
   }
 
-  return stripQuotes(rawValue);
-}
-
-function splitTopLevel(input, delimiter = ",") {
-  const parts = [];
-  let current = "";
-  let quote = null;
-
-  for (let index = 0; index < input.length; index += 1) {
-    const character = input[index];
-
-    if (quote) {
-      current += character;
-      if (character === quote && input[index - 1] !== "\\") {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (character === "'" || character === "\"") {
-      quote = character;
-      current += character;
-      continue;
-    }
-
-    if (character === delimiter) {
-      parts.push(current);
-      current = "";
-      continue;
-    }
-
-    current += character;
-  }
-
-  if (current) {
-    parts.push(current);
-  }
-
-  return parts;
-}
-
-function stripQuotes(value) {
-  if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-
-  return value;
+  return normalizeFrontmatterValue(parsed);
 }
 
 export function tokenize(value) {
@@ -138,4 +122,22 @@ export function tokenize(value) {
 
 export function unique(values) {
   return [...new Set(values)];
+}
+
+function normalizeFrontmatterValue(value) {
+  if (typeof value === "string") {
+    return value.endsWith("\n") ? value.slice(0, -1) : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeFrontmatterValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, normalizeFrontmatterValue(item)])
+    );
+  }
+
+  return value;
 }

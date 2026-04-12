@@ -4,9 +4,10 @@ import { readdir } from "node:fs/promises";
 
 import { readJournal } from "./journal.js";
 import { matchSkills } from "./matcher.js";
-import { parseFrontmatter, readTextIfExists } from "./utils.js";
+import { assertAbsoluteProjectRoot, assertUniqueSkillSlugs, parseFrontmatter, readTextIfExists } from "./utils.js";
 
 export async function listSkills(projectRoot, options = {}) {
+  assertAbsoluteProjectRoot(projectRoot);
   const scope = options.scope || "all";
   const userSkillsDir = options.userSkillsDir || path.join(os.homedir(), ".codex", "skills");
   const projectSkillsDir = options.projectSkillsDir || path.join(projectRoot, ".codex", "skills");
@@ -40,12 +41,17 @@ export async function listSkills(projectRoot, options = {}) {
 }
 
 export async function resolveTriggeredSkills(projectRoot, task, options = {}) {
+  assertAbsoluteProjectRoot(projectRoot);
   const triggeredSkillSlugs = options.triggeredSkillSlugs || [];
+  assertUniqueSkillSlugs(triggeredSkillSlugs);
   const skills = await listSkills(projectRoot, options);
 
   const selected = triggeredSkillSlugs.length > 0
     ? resolveExplicitSkills(triggeredSkillSlugs, skills)
-    : matchSkills(task, skills);
+    : matchSkills(task, skills, {
+      maxResults: options.maxSkills,
+      minScore: options.minScore,
+    });
 
   const hydrated = [];
   for (const skill of selected) {

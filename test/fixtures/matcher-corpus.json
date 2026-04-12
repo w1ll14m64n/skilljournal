@@ -1,0 +1,22 @@
+[
+  {
+    "task": "please deploy to prod after tests pass",
+    "expected": ["deploy-prod"]
+  },
+  {
+    "task": "authentication is broken after the session refresh change",
+    "expected": ["fix-auth"]
+  },
+  {
+    "task": "run the linter before committing",
+    "expected": ["lint"]
+  },
+  {
+    "task": "fix CSS layout bug on the dashboard",
+    "expected": []
+  },
+  {
+    "task": "I need to fix tests before merging",
+    "expected": []
+  }
+]

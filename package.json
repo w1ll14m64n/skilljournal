@@ -6,19 +6,32 @@
   "bin": {
     "skilljournal": "./server.mjs"
   },
+  "files": [
+    "server.mjs",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node server.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check": "node --check server.mjs",
+    "pack:check": "npm pack --dry-run",
+    "verify": "npm run test && npm run check && npm run pack:check"
   },
   "keywords": [
     "mcp",
     "skills",
     "claude"
   ],
-  "license": "ISC",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "yaml": "^2.8.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {

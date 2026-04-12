@@ -86,6 +86,15 @@ describe("listSkills", () => {
     });
     expect(skills.map((s) => s.slug)).toEqual(["alpha", "zebra"]);
   });
+
+  it("rejects a relative project root", async () => {
+    await expect(
+      listSkills("relative/path", {
+        userSkillsDir: path.join(tmpDir, "empty"),
+        userCommandsDir: path.join(tmpDir, "empty2"),
+      })
+    ).rejects.toThrow("projectRoot must be an absolute path");
+  });
 });
 
 describe("resolveTriggeredSkills", () => {
@@ -110,6 +119,20 @@ describe("resolveTriggeredSkills", () => {
     });
     expect(result.skills).toHaveLength(1);
     expect(result.usedExplicitTriggers).toBe(false);
+  });
+
+  it("supports matcher tuning options", async () => {
+    await createCodexSkill(tmpDir, "deploy-prod", '---\nname: Deploy Prod\ntriggers: ["deploy"]\n---\n# Prod');
+    await createCodexSkill(tmpDir, "deploy-stage", '---\nname: Deploy Stage\ntriggers: ["deploy"]\n---\n# Stage');
+
+    const result = await resolveTriggeredSkills(tmpDir, "deploy", {
+      maxSkills: 1,
+      minScore: 0,
+      userSkillsDir: path.join(tmpDir, "empty"),
+      userCommandsDir: path.join(tmpDir, "empty2"),
+    });
+
+    expect(result.skills).toHaveLength(1);
   });
 
   it("includes journal content in injection text", async () => {
@@ -170,5 +193,16 @@ describe("resolveTriggeredSkills", () => {
         userCommandsDir: path.join(tmpDir, "empty2"),
       })
     ).rejects.toThrow("Unknown skill slugs: nonexistent");
+  });
+
+  it("throws on duplicate explicit slugs", async () => {
+    await createCodexSkill(tmpDir, "deploy", "---\nname: Deploy\n---\n# Deploy steps");
+    await expect(
+      resolveTriggeredSkills(tmpDir, "anything", {
+        triggeredSkillSlugs: ["deploy", "deploy"],
+        userSkillsDir: path.join(tmpDir, "empty"),
+        userCommandsDir: path.join(tmpDir, "empty2"),
+      })
+    ).rejects.toThrow("Duplicate skill slug: deploy");
   });
 });

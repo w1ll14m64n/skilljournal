@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import matcherCorpus from "./fixtures/matcher-corpus.json";
 import { matchSkills } from "../src/matcher.js";
 
 function skill(slug, opts = {}) {
@@ -70,5 +71,47 @@ describe("matchSkills", () => {
     const skills = [skill("lint", { name: "Run Linter" })];
     const result = matchSkills("run linter on the project", skills);
     expect(result).toHaveLength(1);
+  });
+
+  it("does not match on a single generic token overlap", () => {
+    const skills = [skill("fix-auth")];
+    expect(matchSkills("fix CSS layout bug", skills)).toEqual([]);
+  });
+
+  it("does not match unrelated tasks through stopword overlap in triggers", () => {
+    const skills = [skill("deploy-prod", { triggers: ["deploy to production"] })];
+    expect(matchSkills("I need to fix tests", skills)).toEqual([]);
+  });
+
+  it("stays stable against the matcher corpus", () => {
+    const skills = [
+      skill("deploy-prod", { name: "Deploy Prod", triggers: ["deploy to prod", "deploy to production"] }),
+      skill("fix-auth", { name: "Fix Authentication" }),
+      skill("lint", { name: "Run Linter" }),
+    ];
+
+    for (const testCase of matcherCorpus) {
+      const result = matchSkills(testCase.task, skills).map((item) => item.slug);
+      expect(result.slice(0, testCase.expected.length), testCase.task).toEqual(testCase.expected);
+      if (testCase.expected.length === 0) {
+        expect(result, testCase.task).toEqual([]);
+      }
+    }
+  });
+
+  it("respects maxResults", () => {
+    const skills = [
+      skill("deploy-prod", { triggers: ["deploy"] }),
+      skill("deploy-stage", { triggers: ["deploy"] }),
+      skill("deploy-dev", { triggers: ["deploy"] }),
+      skill("deploy-qa", { triggers: ["deploy"] }),
+    ];
+    const result = matchSkills("deploy", skills, { maxResults: 2, minScore: 0 });
+    expect(result).toHaveLength(2);
+  });
+
+  it("respects minScore", () => {
+    const skills = [skill("fix-auth", { name: "Fix Authentication" })];
+    expect(matchSkills("authentication is broken", skills, { minScore: 25 })).toEqual([]);
   });
 });

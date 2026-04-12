@@ -1,10 +1,26 @@
 import path from "node:path";
-import { appendFile, access, writeFile } from "node:fs/promises";
+import { appendFile } from "node:fs/promises";
 
-import { ensureDir, readTextIfExists } from "./utils.js";
+import {
+  assertAbsoluteProjectRoot,
+  assertValidSkillSlug,
+  ensureDir,
+  readTextIfExists,
+  resolveDateString
+} from "./utils.js";
 
 export function journalPathForSkill(projectRoot, slug) {
-  return path.join(projectRoot, ".journal", `${slug}.md`);
+  assertAbsoluteProjectRoot(projectRoot);
+  assertValidSkillSlug(slug);
+
+  const journalRoot = path.join(projectRoot, ".journal");
+  const journalPath = path.join(journalRoot, `${slug}.md`);
+  const relativePath = path.relative(journalRoot, journalPath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new Error(`skill slug resolves outside journal directory: ${slug}`);
+  }
+
+  return journalPath;
 }
 
 export async function readJournal(projectRoot, slug) {
@@ -20,7 +36,6 @@ export async function readJournal(projectRoot, slug) {
 export async function appendSkillLearning(projectRoot, slug, entry) {
   const journalPath = journalPathForSkill(projectRoot, slug);
   await ensureDir(path.dirname(journalPath));
-  await ensureFile(journalPath);
   await appendFile(journalPath, renderJournalEntry(entry), "utf8");
   return journalPath;
 }
@@ -39,18 +54,6 @@ export function renderJournalEntry(entry) {
   return `${lines.join("\n")}\n\n`;
 }
 
-async function ensureFile(filePath) {
-  try {
-    await access(filePath);
-  } catch (error) {
-    if (!error || error.code !== "ENOENT") {
-      throw error;
-    }
-
-    await writeFile(filePath, "", "utf8");
-  }
-}
-
 function resolveEntryDate(entry) {
-  return String(entry.date || new Date().toISOString()).slice(0, 10);
+  return resolveDateString(entry.date);
 }
